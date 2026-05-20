@@ -1102,3 +1102,36 @@ not the specific names.
 
 Reviewers should reject new change-detector tests; authors should convert
 them into invariants before re-requesting review.
+
+## Quick Reference: Common Tasks
+
+| Task | Command / Location |
+|---|---|
+| Run agent | `hermes chat -q "..."` or `python run_agent.py` |
+| Run tests | `scripts/run_tests.sh` (preferred) or `pytest tests/ -v` |
+| Add a tool | Create `tools/<name>.py`, register in `toolsets.py`, import in `model_tools.py` |
+| Add a skill | Create `skills/<name>/SKILL.md` |
+| Add a toolset | Add to `_HERMES_CORE_TOOLS` in `toolsets.py` |
+| Add config option | Add to `DEFAULT_CONFIG` in `hermes_cli/config.py` and bump `_config_version` |
+| Browser automation | BrowserBase via `BROWSERBASE_API_KEY` env var (tools/browser_tool.py) |
+| MCP server | Register in `tools/mcp_tool.py` and add to `mcp_servers` in config |
+| Gateway platform | Add adapter in `gateway/platforms/<name>.py` |
+| Cron job | Add entry in `cron/jobs.py` |
+| Kanban board | `hermes kanban` — multi-agent work queue with human approval gates |
+| Delegate to subagent | Use `delegate_task()` tool — spawns isolated child agent |
+| Skill curator | `hermes skills` — browse, install, enable/disable skills |
+| Model config | `hermes models` — list available models per provider |
+| Provider auth | `hermes auth` — configure API keys per provider |
+
+### Architecture Decision Quick Links
+
+| Decision | Location in AGENTS.md |
+|---|---|
+| Skill vs Tool decision | `## Should it be a Skill or a Tool?` (line ~263) |
+| Plugin system | `## Plugins` (line ~487) |
+| Tool registration | `## Adding New Tools` (line ~263) |
+| Config system | `## Adding Configuration` (line ~334) |
+| Skin/theming | `## Skin/Theme System` (line ~398) |
+| Known pitfalls | `## Known Pitfalls` (line ~947) |
+| Profiles (multi-instance) | `## Profiles: Multi-Instance Support` (line ~891) |
+| Test invariants policy | `## Invariant Tests` (last section) |
