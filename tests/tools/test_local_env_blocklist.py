@@ -26,8 +26,7 @@ def _make_fake_popen(captured: dict):
         proc = MagicMock()
         proc.poll.return_value = 0
         proc.returncode = 0
-        proc.stdout = iter([])
-        proc.stdout.close = lambda: None
+        proc.stdout = MagicMock(__iter__=lambda s: iter([]), __next__=lambda s: (_ for _ in ()).throw(StopIteration))
         proc.stdin = MagicMock()
         return proc
     return fake_popen
@@ -86,6 +85,8 @@ class TestProviderEnvBlocklist:
             "KIMI_API_KEY": "kimi-key",
             "MINIMAX_API_KEY": "mm-key",
             "MINIMAX_CN_API_KEY": "mmcn-key",
+            "DEEPSEEK_API_KEY": "deepseek-key",
+            "NVIDIA_API_KEY": "nvidia-key",
         }
         result_env = _run_with_env(extra_os_env=registry_vars)
 
@@ -96,7 +97,6 @@ class TestProviderEnvBlocklist:
         """Extra provider vars not in PROVIDER_REGISTRY must also be blocked."""
         extra_provider_vars = {
             "GOOGLE_API_KEY": "google-key",
-            "DEEPSEEK_API_KEY": "deepseek-key",
             "MISTRAL_API_KEY": "mistral-key",
             "GROQ_API_KEY": "groq-key",
             "TOGETHER_API_KEY": "together-key",
@@ -129,6 +129,13 @@ class TestProviderEnvBlocklist:
             "GH_TOKEN": "gh_alias_secret",
             "GATEWAY_ALLOW_ALL_USERS": "true",
             "GATEWAY_ALLOWED_USERS": "alice,bob",
+            "MODAL_TOKEN_ID": "modal-id",
+            "MODAL_TOKEN_SECRET": "modal-secret",
+            "DAYTONA_API_KEY": "daytona-key",
+            "VERCEL_OIDC_TOKEN": "vercel-oidc-token",
+            "VERCEL_TOKEN": "vercel-token",
+            "VERCEL_PROJECT_ID": "vercel-project",
+            "VERCEL_TEAM_ID": "vercel-team",
         }
         result_env = _run_with_env(extra_os_env=leaked_vars)
 
@@ -281,5 +288,43 @@ class TestBlocklistCoverage:
             "GITHUB_APP_ID",
             "GITHUB_APP_PRIVATE_KEY_PATH",
             "GITHUB_APP_INSTALLATION_ID",
+            "MODAL_TOKEN_ID",
+            "MODAL_TOKEN_SECRET",
+            "DAYTONA_API_KEY",
+            "VERCEL_OIDC_TOKEN",
+            "VERCEL_TOKEN",
+            "VERCEL_PROJECT_ID",
+            "VERCEL_TEAM_ID",
         }
         assert extras.issubset(_HERMES_PROVIDER_ENV_BLOCKLIST)
+
+
+class TestSanePathIncludesHomebrew:
+    """Verify _SANE_PATH includes macOS Homebrew directories."""
+
+    def test_sane_path_includes_homebrew_bin(self):
+        from tools.environments.local import _SANE_PATH
+        assert "/opt/homebrew/bin" in _SANE_PATH
+
+    def test_sane_path_includes_homebrew_sbin(self):
+        from tools.environments.local import _SANE_PATH
+        assert "/opt/homebrew/sbin" in _SANE_PATH
+
+    def test_make_run_env_appends_homebrew_on_minimal_path(self):
+        """When PATH is minimal (no /usr/bin), _make_run_env should append
+        _SANE_PATH which now includes Homebrew dirs."""
+        from tools.environments.local import _make_run_env
+        minimal_env = {"PATH": "/some/custom/bin"}
+        with patch.dict(os.environ, minimal_env, clear=True):
+            result = _make_run_env({})
+        assert "/opt/homebrew/bin" in result["PATH"]
+        assert "/opt/homebrew/sbin" in result["PATH"]
+
+    def test_make_run_env_does_not_duplicate_on_full_path(self):
+        """When PATH already has /usr/bin, _make_run_env should not append."""
+        from tools.environments.local import _make_run_env
+        full_env = {"PATH": "/usr/bin:/bin"}
+        with patch.dict(os.environ, full_env, clear=True):
+            result = _make_run_env({})
+        # Should keep existing PATH unchanged
+        assert result["PATH"] == "/usr/bin:/bin"

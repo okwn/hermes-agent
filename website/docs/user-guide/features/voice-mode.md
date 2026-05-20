@@ -36,16 +36,19 @@ The `~/.hermes/` directory and default `config.yaml` are created automatically t
 
 ```bash
 # CLI voice mode (microphone + audio playback)
-pip install hermes-agent[voice]
+pip install "hermes-agent[voice]"
 
 # Discord + Telegram messaging (includes discord.py[voice] for VC support)
-pip install hermes-agent[messaging]
+pip install "hermes-agent[messaging]"
 
 # Premium TTS (ElevenLabs)
-pip install hermes-agent[tts-premium]
+pip install "hermes-agent[tts-premium]"
+
+# Local TTS (NeuTTS, optional)
+python -m pip install -U neutts[all]
 
 # Everything at once
-pip install hermes-agent[all]
+pip install "hermes-agent[all]"
 ```
 
 | Extra | Packages | Required For |
@@ -53,6 +56,8 @@ pip install hermes-agent[all]
 | `voice` | `sounddevice`, `numpy` | CLI voice mode |
 | `messaging` | `discord.py[voice]`, `python-telegram-bot`, `aiohttp` | Discord & Telegram bots |
 | `tts-premium` | `elevenlabs` | ElevenLabs TTS provider |
+
+Optional local TTS provider: install `neutts` separately with `python -m pip install -U neutts[all]`. On first use it downloads the model automatically.
 
 :::info
 `discord.py[voice]` installs **PyNaCl** (for voice encryption) and **opus bindings** automatically. This is required for Discord voice channel support.
@@ -63,9 +68,11 @@ pip install hermes-agent[all]
 ```bash
 # macOS
 brew install portaudio ffmpeg opus
+brew install espeak-ng   # for NeuTTS
 
 # Ubuntu/Debian
 sudo apt install portaudio19-dev ffmpeg libopus0
+sudo apt install espeak-ng   # for NeuTTS
 ```
 
 | Dependency | Purpose | Required For |
@@ -73,6 +80,7 @@ sudo apt install portaudio19-dev ffmpeg libopus0
 | **PortAudio** | Microphone input and audio playback | CLI voice mode |
 | **ffmpeg** | Audio format conversion (MP3 → Opus, PCM → WAV) | All platforms |
 | **Opus** | Discord voice codec | Discord voice channels |
+| **espeak-ng** | Phonemizer backend | Local NeuTTS provider |
 
 ### API Keys
 
@@ -84,8 +92,9 @@ Add to `~/.hermes/.env`:
 GROQ_API_KEY=your-key                 # Groq Whisper — fast, free tier (cloud)
 VOICE_TOOLS_OPENAI_KEY=your-key       # OpenAI Whisper — paid (cloud)
 
-# Text-to-Speech (optional — Edge TTS works without any key)
-ELEVENLABS_API_KEY=your-key           # ElevenLabs — premium quality
+# Text-to-Speech (optional — Edge TTS and NeuTTS work without any key)
+ELEVENLABS_API_KEY=***           # ElevenLabs — premium quality
+# VOICE_TOOLS_OPENAI_KEY above also enables OpenAI TTS
 ```
 
 :::tip
@@ -95,6 +104,8 @@ If `faster-whisper` is installed, voice mode works with **zero API keys** for ST
 ---
 
 ## CLI Voice Mode
+
+Voice mode is available in both the **classic CLI** (`hermes chat`) and the **TUI** (`hermes --tui`). Behavior is identical across both — same slash commands, same VAD silence detection, same streaming TTS, same hallucination filter. The TUI additionally forwards crash-forensic logs to `~/.hermes/logs/` so push-to-talk failures on exotic audio backends can be reported with a full stack trace rather than disappearing silently.
 
 ### Quick Start
 
@@ -140,7 +151,7 @@ Two-stage algorithm detects when you've finished speaking:
 
 If no speech is detected at all for 15 seconds, recording stops automatically.
 
-Both `silence_threshold` and `silence_duration` are configurable in `config.yaml`.
+Both `silence_threshold` and `silence_duration` are configurable in `config.yaml`. You can also disable the record start/stop beeps with `voice.beep_enabled: false`.
 
 ### Streaming TTS
 
@@ -270,10 +281,10 @@ In the [Developer Portal](https://discord.com/developers/applications) → your 
 | Intent | Purpose |
 |--------|---------|
 | **Presence Intent** | Detect user online/offline status |
-| **Server Members Intent** | Map voice SSRC identifiers to Discord user IDs |
+| **Server Members Intent** | Resolve usernames in `DISCORD_ALLOWED_USERS` to numeric IDs (conditional) |
 | **Message Content Intent** | Read text message content in channels |
 
-All three are required for full voice channel functionality. **Server Members Intent** is especially critical — without it, the bot cannot identify who is speaking in the voice channel.
+**Message Content Intent** is required. **Server Members Intent** is only needed if your `DISCORD_ALLOWED_USERS` list uses usernames — if you use numeric user IDs, you can leave it OFF. Voice-channel SSRC → user_id mapping comes from Discord's SPEAKING opcode on the voice websocket and does **not** require the Server Members Intent.
 
 #### 3. Opus Codec
 
@@ -303,8 +314,9 @@ DISCORD_ALLOWED_USERS=your-user-id
 # STT — local provider needs no key (pip install faster-whisper)
 # GROQ_API_KEY=your-key            # Alternative: cloud-based, fast, free tier
 
-# TTS — optional, Edge TTS (free) is the default
-# ELEVENLABS_API_KEY=your-key      # Premium quality
+# TTS — optional. Edge TTS and NeuTTS need no key.
+# ELEVENLABS_API_KEY=***      # Premium quality
+# VOICE_TOOLS_OPENAI_KEY=***  # OpenAI TTS / Whisper
 ```
 
 ### Start the Gateway
@@ -373,11 +385,17 @@ voice:
   record_key: "ctrl+b"            # Key to start/stop recording
   max_recording_seconds: 120       # Maximum recording length
   auto_tts: false                  # Auto-enable TTS when voice mode starts
+  beep_enabled: true               # Play record start/stop beeps
   silence_threshold: 200           # RMS level (0-32767) below which counts as silence
   silence_duration: 3.0            # Seconds of silence before auto-stop
 
 # Speech-to-Text
 stt:
+  enabled: true                     # set to false to skip auto-transcription —
+                                    # the gateway still caches the audio file and
+                                    # passes its path to the agent as part of the
+                                    # inbound message, useful for custom pipelines
+                                    # (diarization, alignment, archival, etc.)
   provider: "local"                  # "local" (free) | "groq" | "openai"
   local:
     model: "base"                    # tiny, base, small, medium, large-v3
@@ -385,7 +403,7 @@ stt:
 
 # Text-to-Speech
 tts:
-  provider: "edge"                 # "edge" (free) | "elevenlabs" | "openai"
+  provider: "edge"                 # "edge" (free) | "elevenlabs" | "openai" | "neutts" | "minimax"
   edge:
     voice: "en-US-AriaNeural"      # 322 voices, 74 languages
   elevenlabs:
@@ -394,6 +412,12 @@ tts:
   openai:
     model: "gpt-4o-mini-tts"
     voice: "alloy"                 # alloy, echo, fable, onyx, nova, shimmer
+    base_url: "https://api.openai.com/v1"  # optional: override for self-hosted or OpenAI-compatible endpoints
+  neutts:
+    ref_audio: ''
+    ref_text: ''
+    model: neuphonic/neutts-air-q4-gguf
+    device: cpu
 ```
 
 ### Environment Variables
@@ -410,9 +434,9 @@ STT_OPENAI_MODEL=whisper-1               # Override default OpenAI STT model
 GROQ_BASE_URL=https://api.groq.com/openai/v1     # Custom Groq endpoint
 STT_OPENAI_BASE_URL=https://api.openai.com/v1    # Custom OpenAI STT endpoint
 
-# Text-to-Speech providers (Edge TTS needs no key)
-ELEVENLABS_API_KEY=...             # ElevenLabs (premium quality)
-# OpenAI TTS uses VOICE_TOOLS_OPENAI_KEY
+# Text-to-Speech providers (Edge TTS and NeuTTS need no key)
+ELEVENLABS_API_KEY=***             # ElevenLabs (premium quality)
+# VOICE_TOOLS_OPENAI_KEY above also enables OpenAI TTS
 
 # Discord voice channel
 DISCORD_BOT_TOKEN=...
@@ -440,6 +464,9 @@ Provider priority (automatic fallback): **local** > **groq** > **openai**
 | **Edge TTS** | Good | Free | ~1s | No |
 | **ElevenLabs** | Excellent | Paid | ~2s | Yes |
 | **OpenAI TTS** | Good | Paid | ~1.5s | Yes |
+| **NeuTTS** | Good | Free | Depends on CPU/GPU | No |
+
+NeuTTS uses the `tts.neutts` config block above.
 
 ---
 

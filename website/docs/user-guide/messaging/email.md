@@ -104,6 +104,7 @@ The adapter polls the IMAP inbox for UNSEEN messages at a configurable interval 
   - Documents (PDF, ZIP, etc.) → available for file access
 - **HTML-only emails** have tags stripped for plain text extraction
 - **Self-messages** are filtered out to prevent reply loops
+- **Automated/noreply senders** are silently ignored — `noreply@`, `mailer-daemon@`, `bounce@`, `no-reply@`, and emails with `Auto-Submitted`, `Precedence: bulk`, or `List-Unsubscribe` headers
 
 ### Sending Replies
 
@@ -117,6 +118,18 @@ Replies are sent via SMTP with proper email threading:
 ### File Attachments
 
 The agent can send file attachments in replies. Include `MEDIA:/path/to/file` in the response and the file is attached to the outgoing email.
+
+### Skipping Attachments
+
+To ignore all incoming attachments (for malware protection or bandwidth savings), add to your `config.yaml`:
+
+```yaml
+platforms:
+  email:
+    skip_attachments: true
+```
+
+When enabled, attachment and inline parts are skipped before payload decoding. The email body text is still processed normally.
 
 ---
 
